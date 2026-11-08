@@ -1,0 +1,144 @@
+package com.gregtechceu.gtceu.api.sync_system;
+
+import com.gregtechceu.gtceu.GTCEu;
+import com.gregtechceu.gtceu.api.sync_system.annotations.ClientFieldChangeListener;
+import com.gregtechceu.gtceu.api.sync_system.annotations.SaveField;
+import com.gregtechceu.gtceu.api.sync_system.annotations.SyncToClient;
+import com.gregtechceu.gtceu.api.sync_system.data_transformers.ValueTransformer;
+import com.gregtechceu.gtceu.api.sync_system.data_transformers.ValueTransformers;
+import com.gregtechceu.gtceu.api.sync_system.managed.ISyncManaged;
+
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import lombok.Getter;
+import org.jetbrains.annotations.Nullable;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.function.Supplier;
+
+/**
+ * Static data for {@link ISyncManaged} classes.
+ */
+public final class ClassSyncData {
+
+    private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+    private static final ClassValue<ClassSyncData> CACHE = new ClassValue<>() {
+
+        @Override
+        protected ClassSyncData computeValue(Class<?> type) {
+            return new ClassSyncData(type);
+        }
+    };
+
+    /**
+     * Gets the {@link ClassSyncData} object for a specific class
+     */
+    public static ClassSyncData getClassData(Class<?> cls) {
+        return CACHE.get(cls);
+    }
+
+    @Getter
+    private final Map<String, FieldSyncData> managedFields = new Object2ObjectOpenHashMap<>();
+    @Getter
+    private final Map<String, FieldSyncData> clientSyncFields = new Object2ObjectOpenHashMap<>();
+    @Getter
+    private final Map<String, FieldSyncData> serverSaveFields = new Object2ObjectOpenHashMap<>();
+    @Getter
+    private @Nullable Supplier<?> clientsideConstructor = null;
+
+    private ClassSyncData(Class<?> clazz) {
+        var isManaged = ISyncManaged.class.isAssignableFrom(clazz);
+
+        if (!isManaged)
+            throw new IllegalArgumentException(
+                    "Cannot create class sync data for non sync managed class " + clazz.getName());
+
+        MethodHandles.Lookup privateLookup;
+        try {
+            privateLookup = MethodHandles.privateLookupIn(clazz, LOOKUP);
+        } catch (IllegalAccessException e) {
+            GTCEu.LOGGER.error("Sync: Failed to create method handle lookup for class {}", clazz);
+            throw new RuntimeException(e);
+        }
+
+        Map<String, List<MethodHandle>> changeListeners = new HashMap<>();
+
+        for (Method method : clazz.getDeclaredMethods()) {
+            ClientFieldChangeListener listener = method.getAnnotation(ClientFieldChangeListener.class);
+            if (listener == null) continue;
+
+            if (Modifier.isStatic(method.getModifiers()))
+                throw new IllegalArgumentException("Cannot apply syncdata annotation to static method: %s.%s"
+                        .formatted(clazz.getName(), method.getName()));
+
+            MethodHandle handle;
+            try {
+                handle = privateLookup.unreflect(method);
+            } catch (IllegalAccessException e) {
+                GTCEu.LOGGER.error("Sync: Failed to acquire method handle for method {} {}", method.getName(),
+                        clazz.getName());
+                GTCEu.LOGGER.error(e.getMessage());
+                continue;
+            }
+
+            changeListeners.computeIfAbsent(listener.fieldName(), $ -> new ArrayList<>()).add(handle);
+        }
+
+        for (Field field : clazz.getDeclaredFields()) {
+
+            boolean hasSaveField = field.isAnnotationPresent(SaveField.class);
+            boolean hasClientSync = field.isAnnotationPresent(SyncToClient.class);
+            if (!hasSaveField && !hasClientSync) continue;
+
+            if (Modifier.isStatic(field.getModifiers()))
+                throw new IllegalArgumentException("Cannot apply syncdata annotations to static field: %s.%s"
+                        .formatted(field.getDeclaringClass().getName(), field.getName()));
+
+            VarHandle handle;
+            try {
+                handle = privateLookup.unreflectVarHandle(field);
+            } catch (IllegalAccessException e) {
+                GTCEu.LOGGER.error("Sync: Failed to acquire variable handle for field {} {}", field.getName(),
+                        clazz.getName());
+                throw new RuntimeException(e);
+            }
+
+            FieldSyncData syncData = new FieldSyncData(field, handle, ValueTransformers.get(field.getGenericType()),
+                    changeListeners.getOrDefault(field.getName(), List.of()));
+            managedFields.put(field.getName(), syncData);
+            if (hasClientSync) clientSyncFields.put(field.getName(), syncData);
+            if (hasSaveField) serverSaveFields.put(field.getName(), syncData);
+        }
+
+        Class<?> parent = clazz.getSuperclass();
+        if (ISyncManaged.class.isAssignableFrom(parent)) {
+            ClassSyncData parentHandles = CACHE.get(parent);
+            managedFields.putAll(parentHandles.managedFields);
+            clientSyncFields.putAll(parentHandles.clientSyncFields);
+            serverSaveFields.putAll(parentHandles.serverSaveFields);
+        }
+    }
+
+    /**
+     * Allows for a custom value transformer to be used for a specific field on this class, ignoring any other sync
+     * behaviour attached to the field.
+     * 
+     * @param fieldName   The field name
+     * @param transformer The custom value transformer
+     */
+    public void setCustomTransformerForField(String fieldName, ValueTransformer<?> transformer) {
+        managedFields.get(fieldName).setTransformer(transformer);
+    }
+
+    /**
+     * Allows this class to be instantiated on the client when being synced.
+     * 
+     * @param ctor The constructor/supplier to be called when instantiating this class on the client.
+     */
+    public void setClientsideConstructor(@Nullable Supplier<?> ctor) {
+        clientsideConstructor = ctor;
+    }
+}

@@ -1,0 +1,106 @@
+package com.gregtechceu.gtceu.api.cover.filter;
+
+import com.gregtechceu.gtceu.common.mui.GTGuiTextures;
+import com.gregtechceu.gtceu.common.mui.GTMuiWidgets;
+
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.ItemStack;
+
+import brachy.modularui.factory.GuiData;
+import brachy.modularui.screen.ModularPanel;
+import brachy.modularui.screen.UISettings;
+import brachy.modularui.value.sync.PanelSyncManager;
+import brachy.modularui.widgets.Dialog;
+import brachy.modularui.widgets.SlotGroupWidget;
+import brachy.modularui.widgets.layout.Flow;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.commons.lang3.NotImplementedException;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Range;
+
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+public abstract class Filter<T> implements Predicate<T> {
+
+    @Setter
+    private Consumer<Filter<T>> onUpdated = $ -> {};
+    @Setter
+    private @Nullable Consumer<Filter<T>> itemWriter = null;
+
+    @Getter
+    @Setter
+    protected ItemStack filterItemStack = ItemStack.EMPTY;
+
+    public Filter() {}
+
+    /**
+     * @return Filter panel when opened by itself (including the player inventory)
+     */
+    public ModularPanel<?> getPanel(GuiData data, PanelSyncManager syncManager, UISettings settings,
+                                    boolean showPlayerInventory) {
+        return new Dialog<>(BuiltInRegistries.ITEM
+                .getKey(filterItemStack.getItem()).toString())
+                .disablePanelsBelow(false)
+                .draggable(true)
+                .coverChildrenHeight()
+                .child(GTMuiWidgets.createTitleBar(this::getFilterItemStack, 176, GTGuiTextures.BACKGROUND))
+                .child(Flow.col().coverChildrenHeight()
+                        .child(getFilterUI(data, syncManager, settings).marginTop(10).marginBottom(10))
+                        .childIf(showPlayerInventory,
+                                () -> SlotGroupWidget.playerInventory(false).marginLeft(7).marginBottom(7)));
+    }
+
+    /**
+     * Writes this filter to the filter item's NBT and calls the {@link #onUpdated} listener.
+     */
+    public void updateAndSaveFilter() {
+        if (itemWriter != null) itemWriter.accept(this);
+        onUpdated.accept(this);
+    }
+
+    /**
+     * Called when a filter is loaded by a filter handler.
+     *
+     * @param handler The filter handler
+     */
+    public void onFilterLoaded(FilterHandler<T> handler) {}
+
+    /**
+     * @return The filter UI.
+     */
+    public abstract Flow getFilterUI(GuiData data, PanelSyncManager syncManager, UISettings settings);
+
+    /**
+     * @return Whether this filter supports querying for exact content amounts.
+     */
+    public boolean supportsAmounts() {
+        return false;
+    }
+
+    /**
+     * Tests if the given stack matches this filter.
+     *
+     * @return If the given stack matches this filter.
+     */
+    @Override
+    public abstract boolean test(T t);
+
+    /**
+     * Retrieves the given amount that matches the filter for the stack. {@link #supportsAmounts()} should be checked
+     * before calling this.
+     *
+     * @return The exact amount that matches the filter.<br>
+     *         If the stack is not matched by this filter, 0 is returned instead.
+     */
+    @Range(from = 0, to = Integer.MAX_VALUE)
+    public int testAmount(T stack) {
+        throw new NotImplementedException("This filter does not support testing amounts.");
+    }
+
+    /**
+     * @return A new object that is a copy of this filter
+     */
+    public abstract Filter<T> createCopy();
+}

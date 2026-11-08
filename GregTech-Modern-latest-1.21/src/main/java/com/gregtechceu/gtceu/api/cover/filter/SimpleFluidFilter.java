@@ -1,0 +1,184 @@
+package com.gregtechceu.gtceu.api.cover.filter;
+
+import com.gregtechceu.gtceu.api.transfer.fluid.CustomFluidTank;
+import com.gregtechceu.gtceu.common.mui.GTGuiTextures;
+
+import net.minecraft.MethodsReturnNonnullByDefault;
+import net.neoforged.neoforge.fluids.FluidStack;
+
+import brachy.modularui.factory.GuiData;
+import brachy.modularui.screen.UISettings;
+import brachy.modularui.value.sync.BooleanSyncValue;
+import brachy.modularui.value.sync.FluidSlotSyncHandler;
+import brachy.modularui.value.sync.PanelSyncManager;
+import brachy.modularui.widgets.ToggleButton;
+import brachy.modularui.widgets.layout.Flow;
+import brachy.modularui.widgets.layout.Grid;
+import brachy.modularui.widgets.slot.FluidSlot;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import lombok.Getter;
+import org.jetbrains.annotations.Range;
+
+import java.util.Arrays;
+import java.util.List;
+
+import javax.annotation.ParametersAreNonnullByDefault;
+
+@ParametersAreNonnullByDefault
+@MethodsReturnNonnullByDefault
+public class SimpleFluidFilter extends Filter<FluidStack> {
+
+    // spotless:off
+    public static final Codec<SimpleFluidFilter> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.BOOL.fieldOf("is_blacklist").forGetter(val -> val.isBlackList),
+            Codec.BOOL.fieldOf("ignore_components").forGetter(val -> val.ignoreNbt),
+            FluidStack.OPTIONAL_CODEC.listOf().fieldOf("matches").forGetter(val -> Arrays.stream(val.matches).toList()))
+    .apply(instance, SimpleFluidFilter::new));
+    //spotless:on
+    private static final int MAX_STACK_SIZE = 2_048_000_000; // Capacity of quantum tank IX
+
+    @Getter
+    protected boolean isBlackList;
+    @Getter
+    protected boolean ignoreNbt;
+    @Getter
+    protected FluidStack[] matches = new FluidStack[9];
+
+    @Getter
+    protected int maxStackSize = 1;
+
+    private final CustomFluidTank[] fluidStorageSlots = new CustomFluidTank[9];
+
+    public SimpleFluidFilter() {
+        super();
+        Arrays.fill(matches, FluidStack.EMPTY);
+        initFluidStorageSlots();
+    }
+
+    protected SimpleFluidFilter(boolean isBlackList, boolean ignoreNbt, List<FluidStack> matches) {
+        super();
+        this.isBlackList = isBlackList;
+        this.ignoreNbt = ignoreNbt;
+        this.matches = matches.toArray(FluidStack[]::new);
+        initFluidStorageSlots();
+    }
+
+    private void initFluidStorageSlots() {
+        for (int i = 0; i < 9; i++) {
+            int finalI = i;
+            fluidStorageSlots[i] = new CustomFluidTank(MAX_STACK_SIZE);
+            fluidStorageSlots[i].setFluid(matches[i]);
+            fluidStorageSlots[i].setOnContentsChanged(() -> {
+                matches[finalI] = fluidStorageSlots[finalI].getFluid();
+                updateAndSaveFilter();
+            });
+        }
+    }
+
+    @Override
+    public boolean supportsAmounts() {
+        return !isBlackList();
+    }
+
+    public void setBlackList(boolean blackList) {
+        isBlackList = blackList;
+        updateAndSaveFilter();
+    }
+
+    public void setIgnoreNbt(boolean ingoreNbt) {
+        this.ignoreNbt = ingoreNbt;
+        updateAndSaveFilter();
+    }
+
+    public Flow getFilterUI(GuiData data, PanelSyncManager syncManager, UISettings settings) {
+        for (int i = 0; i < 9; i++) {
+            syncManager.syncValue("filter_slot_" + i,
+                    new FluidSlotSyncHandler(fluidStorageSlots[i]).controlsAmount(true).phantom(true));
+        }
+
+        Grid filterGrid = new Grid()
+                .coverChildren()
+                .gridOfSizeWidth(9, 3, (x, y, i) -> new FluidSlot().syncHandler("filter_slot_" + i));
+
+        BooleanSyncValue blacklist = new BooleanSyncValue(this::isBlackList, this::setBlackList).allowC2S();
+        syncManager.syncValue("blacklist", blacklist);
+
+        BooleanSyncValue ignoreNBT = new BooleanSyncValue(this::isIgnoreNbt, this::setIgnoreNbt).allowC2S();
+        syncManager.syncValue("ignoreNBT", ignoreNBT);
+
+        Flow filterConfigButtons = Flow.col()
+                .coverChildren()
+                .child(new ToggleButton().stateBackground(GTGuiTextures.BUTTON_BLACKLIST).syncHandler("blacklist"))
+                .child(new ToggleButton().stateBackground(GTGuiTextures.BUTTON_IGNORE_NBT).syncHandler("ignoreNBT"));
+        return Flow.row()
+                .coverChildrenHeight()
+                .child(filterGrid.horizontalCenter())
+                .child(filterConfigButtons.marginLeft(118));
+    }
+
+    @Override
+    public boolean test(FluidStack other) {
+        return testAmount(other) > 0;
+    }
+
+    @Override
+    @Range(from = 0, to = Integer.MAX_VALUE)
+    public int testAmount(FluidStack fluidStack) {
+        int totalFluidAmount = getTotalConfiguredFluidAmount(fluidStack);
+
+        if (isBlackList) {
+            return (totalFluidAmount > 0) ? 0 : Integer.MAX_VALUE;
+        }
+
+        return totalFluidAmount;
+    }
+
+    @Override
+    public Filter<FluidStack> createCopy() {
+        return new SimpleFluidFilter(isBlackList, ignoreNbt, Arrays.asList(matches));
+    }
+
+    public int getTotalConfiguredFluidAmount(FluidStack fluidStack) {
+        int totalAmount = 0;
+
+        for (var candidate : matches) {
+            if (ignoreNbt) {
+                if (FluidStack.isSameFluid(candidate, fluidStack)) totalAmount += candidate.getAmount();
+            } else {
+                if (FluidStack.isSameFluidSameComponents(candidate, fluidStack)) totalAmount += candidate.getAmount();
+            }
+        }
+
+        return totalAmount;
+    }
+
+    public void setMaxStackSize(int maxStackSize) {
+        this.maxStackSize = maxStackSize;
+
+        for (CustomFluidTank slot : fluidStorageSlots) {
+            slot.setCapacity(maxStackSize);
+        }
+
+        for (FluidStack match : matches) {
+            if (!match.isEmpty())
+                match.setAmount(Math.min(match.getAmount(), maxStackSize));
+        }
+    }
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof SimpleFluidFilter that)) return false;
+
+        return isBlackList == that.isBlackList && ignoreNbt == that.ignoreNbt && Arrays.equals(matches, that.matches);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Boolean.hashCode(isBlackList);
+        result = 31 * result + Boolean.hashCode(ignoreNbt);
+        result = 31 * result + Arrays.hashCode(matches);
+        return result;
+    }
+}

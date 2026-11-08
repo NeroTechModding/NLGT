@@ -1,0 +1,177 @@
+package com.gregtechceu.gtceu.common.item.armor;
+
+import com.gregtechceu.gtceu.GTCEu;
+import com.gregtechceu.gtceu.api.capability.GTCapabilityHelper;
+import com.gregtechceu.gtceu.api.capability.IElectricItem;
+import com.gregtechceu.gtceu.api.item.armor.ArmorLogicSuite;
+import com.gregtechceu.gtceu.api.item.armor.ArmorUtils;
+import com.gregtechceu.gtceu.api.item.datacomponents.GTArmor;
+import com.gregtechceu.gtceu.common.data.item.GTDataComponents;
+import com.gregtechceu.gtceu.data.lang.LangUtils;
+import com.gregtechceu.gtceu.utils.input.SyncedKeyMappings;
+
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.ArmorMaterial;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+
+public class Jetpack extends ArmorLogicSuite implements IJetpack {
+
+    public Jetpack(int energyPerUse, long capacity, int tier) {
+        super(energyPerUse, capacity, tier, ArmorItem.Type.CHESTPLATE);
+    }
+
+    @Override
+    public void onArmorTick(Level world, Player player, ItemStack stack) {
+        GTArmor.Mutable data = stack.getOrDefault(GTDataComponents.ARMOR_DATA, GTArmor.EMPTY).toMutable();
+        byte toggleTimer = data.toggleTimer();
+        boolean hoverMode = updateHoverMode(player, stack, data.hover(), false);
+        boolean jetpackEnabled = IJetpack.isEngineEnabled(stack);
+
+        String messageKey = null;
+        if (toggleTimer == 0) {
+            if (SyncedKeyMappings.JETPACK_ENABLE.isKeyDown(player)) {
+                jetpackEnabled = !jetpackEnabled;
+                IJetpack.setEngineEnabled(stack, jetpackEnabled);
+                messageKey = LangUtils.enabledBoolean("armor.gtceu.jetpack.flight", jetpackEnabled);
+                data.enabled(jetpackEnabled);
+            } else if (SyncedKeyMappings.ARMOR_HOVER.isKeyDown(player)) {
+                hoverMode = updateHoverMode(player, stack, hoverMode, true);
+                messageKey = LangUtils.enabledBoolean("armor.gtceu.jetpack.hover", hoverMode);
+                data.hover(hoverMode);
+            }
+
+            if (messageKey != null) {
+                toggleTimer = 5;
+                if (!world.isClientSide) player.displayClientMessage(Component.translatable(messageKey), true);
+            }
+        }
+
+        if (toggleTimer > 0) toggleTimer--;
+        data.toggleTimer(toggleTimer);
+        data.hover(hoverMode);
+
+        stack.set(GTDataComponents.ARMOR_DATA, data.toImmutable());
+        performFlying(player, jetpackEnabled, hoverMode, stack);
+    }
+
+    @Override
+    public boolean canUseEnergy(ItemStack stack, int amount) {
+        IElectricItem container = getIElectricItem(stack);
+        if (container == null)
+            return false;
+        return container.canUse(amount);
+    }
+
+    @Override
+    public void drainEnergy(ItemStack stack, int amount) {
+        IElectricItem container = getIElectricItem(stack);
+        if (container == null)
+            return;
+        container.discharge(amount, container.getTier(), true, false, false);
+    }
+
+    @Override
+    public boolean hasEnergy(ItemStack stack) {
+        IElectricItem container = getIElectricItem(stack);
+        if (container == null)
+            return false;
+        return container.getCharge() > 0;
+    }
+
+    @Nullable
+    private static IElectricItem getIElectricItem(ItemStack stack) {
+        return GTCapabilityHelper.getElectricItem(stack);
+    }
+
+    @Override
+    public ResourceLocation getArmorTexture(ItemStack stack, Entity entity,
+                                            EquipmentSlot slot, ArmorMaterial.Layer layer) {
+        return GTCEu.id("textures/armor/jetpack.png");
+    }
+
+    /*
+     * @Override
+     * public ArmorProperties getProperties(EntityLivingBase player, @NotNull ItemStack armor, DamageSource source,
+     * double damage, ArmorItem.Type equipmentSlot) {
+     * return new ArmorProperties(0, 0, 0);
+     * }
+     */
+
+    @OnlyIn(Dist.CLIENT)
+    @Override
+    public void drawHUD(ItemStack item, ArmorUtils.ModularHUD hud, GuiGraphics guiGraphics) {
+        addCapacityHUD(item, hud);
+
+        GTArmor data = item.get(GTDataComponents.ARMOR_DATA);
+        if (data != null) {
+            Component status = IJetpack.isEngineEnabled(item) ?
+                    Component.translatable("hud.gtceu.armor.status.enabled") :
+                    Component.translatable("hud.gtceu.armor.status.disabled");
+            Component result = Component.translatable("hud.gtceu.armor.engine_enabled", status);
+            hud.newLine(result);
+
+            status = data.hover() ?
+                    Component.translatable("hud.gtceu.armor.status.enabled") :
+                    Component.translatable("hud.gtceu.armor.status.disabled");
+            result = Component.translatable("hud.gtceu.armor.hover_mode", status);
+            hud.newLine(result);
+        }
+    }
+
+    @Override
+    public void addInfo(ItemStack itemStack, List<Component> lines) {
+        super.addInfo(itemStack, lines);
+        GTArmor data = itemStack.get(GTDataComponents.ARMOR_DATA);
+        if (data != null) {
+            Component state = IJetpack.isEngineEnabled(itemStack) ?
+                    Component.translatable("hud.gtceu.armor.status.enabled") :
+                    Component.translatable("hud.gtceu.armor.status.disabled");
+            lines.add(Component.translatable("hud.gtceu.armor.engine_enabled", state));
+
+            state = Component.translatable("hud.gtceu.armor.status.disabled");
+            if (data.hover())
+                state = Component.translatable("hud.gtceu.armor.status.enabled");
+            lines.add(Component.translatable("hud.gtceu.armor.hover_mode", state));
+        }
+    }
+
+    @Override
+    public double getVerticalHoverSlowSpeed() {
+        return 0.1D;
+    }
+
+    @Override
+    public double getVerticalAcceleration() {
+        return 0.12D;
+    }
+
+    @Override
+    public double getVerticalSpeed() {
+        return 0.3D;
+    }
+
+    @Override
+    public double getSidewaysSpeed() {
+        return 0.08D;
+    }
+
+    @Override
+    public ParticleOptions getParticle() {
+        return ParticleTypes.SMOKE;
+    }
+}

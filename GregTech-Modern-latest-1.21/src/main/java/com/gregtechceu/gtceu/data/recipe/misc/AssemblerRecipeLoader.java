@@ -1,0 +1,150 @@
+package com.gregtechceu.gtceu.data.recipe.misc;
+
+import net.minecraft.data.recipes.RecipeOutput;
+import net.minecraft.world.item.Items;
+
+import static com.gregtechceu.gtceu.api.GTValues.*;
+import static com.gregtechceu.gtceu.api.data.tag.TagPrefix.*;
+import static com.gregtechceu.gtceu.common.data.GTBlocks.*;
+import static com.gregtechceu.gtceu.common.data.GTItems.*;
+import static com.gregtechceu.gtceu.common.data.GTMaterials.*;
+import static com.gregtechceu.gtceu.common.data.GTRecipeTypes.*;
+
+public class AssemblerRecipeLoader {
+
+    public static void init(RecipeOutput provider) {
+        ASSEMBLER_RECIPES.recipeBuilder("spray_can_empty")
+                .inputItems(dust, Redstone)
+                .inputItems(FLUID_CELL)
+                .outputItems(SPRAY_EMPTY)
+                .duration(200).EUt(VA[ULV]).save(provider);
+
+        // TODO Foam Sprayer
+        // ASSEMBLER_RECIPES.recipeBuilder("foam_sprayer")
+        // .inputItems(plate, Tin, 6)
+        // .inputItems(SPRAY_EMPTY)
+        // .inputItems(paneGlass.name(), 1)
+        // .outputItems(FOAM_SPRAYER)
+        // .duration(200).EUt(VA[ULV]).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("tool_lighter_invar")
+                .inputItems(plate, Invar, 2)
+                .inputItems(Items.FLINT)
+                .outputItems(TOOL_LIGHTER_INVAR)
+                .duration(256).EUt(16).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("tool_lighter_platinum")
+                .inputItems(plate, Platinum, 2)
+                .inputItems(Items.FLINT)
+                .outputItems(TOOL_LIGHTER_PLATINUM)
+                .duration(256).EUt(256).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("tool_matches_0")
+                .inputItems(bolt, Wood)
+                .inputItems(dustSmall, Phosphorus)
+                .outputItems(TOOL_MATCHES)
+                .duration(16).EUt(16).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("tool_matches_1")
+                .inputItems(bolt, Wood)
+                .inputItems(dustSmall, TricalciumPhosphate)
+                .outputItems(TOOL_MATCHES)
+                .duration(16).EUt(16).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("tool_matches_2")
+                .inputItems(bolt, Wood, 4)
+                .inputItems(dust, Phosphorus)
+                .outputItems(TOOL_MATCHES, 4)
+                .duration(64).EUt(16).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("tool_matches_3")
+                .inputItems(bolt, Wood, 4)
+                .inputItems(dust, TricalciumPhosphate)
+                .outputItems(TOOL_MATCHES, 4)
+                .duration(64).EUt(16).save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("small_wood_pipe").duration(200).EUt(VA[LV])
+                .inputItems(plate, Wood)
+                .circuitMeta(12)
+                .inputFluids(Glue.getFluid(50))
+                .outputItems(pipeSmallFluid, Wood)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("normal_wood_pipe").duration(200).EUt(VA[LV])
+                .inputItems(plate, Wood, 3)
+                .circuitMeta(6)
+                .inputFluids(Glue.getFluid(20))
+                .outputItems(pipeNormalFluid, Wood)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("large_wood_pipe").duration(100).EUt(VA[LV])
+                .inputItems(plate, Wood, 6)
+                .circuitMeta(2)
+                .inputFluids(Glue.getFluid(10))
+                .outputItems(pipeLargeFluid, Wood)
+                .save(provider);
+
+        // Treated Wood Pipes
+        ASSEMBLER_RECIPES.recipeBuilder("small_treated_wood_pipe").duration(200).EUt(VA[LV])
+                .inputItems(plate, TreatedWood)
+                .circuitMeta(12)
+                .inputFluids(Glue.getFluid(50))
+                .outputItems(pipeSmallFluid, TreatedWood)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("normal_treated_wood_pipe").duration(200).EUt(VA[LV])
+                .inputItems(plate, TreatedWood, 3)
+                .circuitMeta(6)
+                .inputFluids(Glue.getFluid(20))
+                .outputItems(pipeNormalFluid, TreatedWood)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("large_treated_wood_pipe").duration(100).EUt(VA[LV])
+                .inputItems(plate, TreatedWood, 6)
+                .circuitMeta(2)
+                .inputFluids(Glue.getFluid(10))
+                .outputItems(pipeLargeFluid, TreatedWood)
+                .save(provider);
+
+        // Neutron Reflector
+        ASSEMBLER_RECIPES.recipeBuilder("neutron_reflector").duration(4000).EUt(VA[MV])
+                .inputItems(plate, Ruridit)
+                .inputItems(plateDouble, Beryllium, 4)
+                .inputItems(plateDouble, TungstenCarbide, 2)
+                .inputFluids(TinAlloy.getFluid(L * 32))
+                .outputItems(NEUTRON_REFLECTOR)
+                .addMaterialInfo(true)
+                .save(provider);
+
+        // hazmat pieces
+        ASSEMBLER_RECIPES.recipeBuilder("hazmat_boots").duration(200).EUt(VA[LV])
+                .inputItems(plate, Rubber, 4)
+                .inputItems(foil, Polyethylene, 2)
+                .inputItems(plate, PolyvinylChloride, 2)
+                .outputItems(HAZMAT_BOOTS)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("hazmat_chestpiece").duration(200).EUt(VA[LV])
+                .inputItems(plate, Rubber, 2)
+                .inputItems(plate, PolyvinylChloride, 7)
+                .inputItems(plate, Lead, 3)
+                .outputItems(HAZMAT_CHESTPLATE)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("hazmat_leggings").duration(200).EUt(VA[LV])
+                .inputItems(plate, Rubber, 2)
+                .inputItems(plate, PolyvinylChloride, 5)
+                .inputItems(rod, Iron, 2)
+                .inputItems(ring, Steel, 4)
+                .outputItems(HAZMAT_LEGGINGS)
+                .save(provider);
+
+        ASSEMBLER_RECIPES.recipeBuilder("hazmat_headpiece").duration(200).EUt(VA[LV])
+                .inputItems(MASK_FILTER)
+                .inputItems(plate, PolyvinylChloride, 4)
+                .inputItems(plate, Glass, 2)
+                .inputItems(ring, PolyvinylChloride, 1)
+                .outputItems(HAZMAT_HELMET)
+                .save(provider);
+    }
+}

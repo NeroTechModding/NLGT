@@ -1,0 +1,728 @@
+package com.gregtechceu.gtceu.api.data.chemical.material;
+
+import com.gregtechceu.gtceu.api.data.chemical.ChemicalHelper;
+import com.gregtechceu.gtceu.api.data.chemical.Element;
+import com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlag;
+import com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialFlags;
+import com.gregtechceu.gtceu.api.data.chemical.material.info.MaterialIconSet;
+import com.gregtechceu.gtceu.api.data.chemical.material.properties.*;
+import com.gregtechceu.gtceu.api.data.chemical.material.stack.DeferredMaterialStack;
+import com.gregtechceu.gtceu.api.data.chemical.material.stack.MaterialStack;
+import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
+import com.gregtechceu.gtceu.api.fluids.FluidBuilder;
+import com.gregtechceu.gtceu.api.fluids.store.FluidStorageKey;
+import com.gregtechceu.gtceu.api.fluids.store.FluidStorageKeys;
+import com.gregtechceu.gtceu.api.item.tool.MaterialToolTier;
+import com.gregtechceu.gtceu.api.registry.GTRegistries;
+import com.gregtechceu.gtceu.utils.FormattingUtil;
+import com.gregtechceu.gtceu.utils.GTMath;
+import com.gregtechceu.gtceu.utils.TagUtil;
+
+import net.minecraft.core.Holder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.material.Fluid;
+import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
+
+import com.google.common.collect.ImmutableList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.*;
+
+@SuppressWarnings("unused")
+public final class Material {
+
+    /**
+     * Basic Info of this Material.
+     *
+     * @see MaterialInfo
+     */
+    @Getter
+    private final MaterialInfo materialInfo;
+
+    /**
+     * Properties of this Material.
+     *
+     * @see MaterialProperties
+     */
+    @Getter
+    private final MaterialProperties properties;
+
+    /**
+     * Generation flags of this material
+     *
+     * @see MaterialFlags
+     */
+    @Getter
+    private final MaterialFlags flags;
+
+    /**
+     * Chemical formula of this material
+     */
+    private @Nullable String chemicalFormula;
+
+    /**
+     * Material specific tags
+     */
+    @Getter
+    private final List<TagKey<Item>> itemTags = new ArrayList<>();
+
+    public Material(MaterialInfo materialInfo, MaterialProperties properties,
+                    MaterialFlags flags) {
+        this.materialInfo = materialInfo;
+        this.properties = properties;
+        this.flags = flags;
+        this.properties.setMaterial(this);
+    }
+
+    public ResourceKey<Material> getKey() {
+        return ResourceKey.create(GTRegistries.Keys.MATERIAL, getResourceLocation());
+    }
+
+    public Holder<Material> getRegistryHolder() {
+        return GTRegistries.MATERIALS.getHolderOrThrow(getKey());
+    }
+
+    public String getChemicalFormula() {
+        if (chemicalFormula == null) chemicalFormula = calculateChemicalFormula();
+        return chemicalFormula;
+    }
+
+    private String calculateChemicalFormula() {
+        if (chemicalFormula != null) return this.chemicalFormula;
+        if (getElement() != null) {
+            String[] split = getElement().symbol().split("-");
+            String result;
+            if (split.length > 1) {
+                split[1] = FormattingUtil.toSmallUpNumbers(split[1]);
+                result = split[0] + split[1];
+            } else result = getElement().symbol();
+            return result;
+        }
+        if (!materialInfo.getComponentList().isEmpty()) {
+            StringBuilder components = new StringBuilder();
+            for (MaterialStack component : materialInfo.getComponentList())
+                components.append(component);
+            return components.toString();
+        }
+        return "";
+    }
+
+    public Material setFormula(String formula) {
+        return setFormula(formula, true);
+    }
+
+    public Material setFormula(String formula, boolean withFormatting) {
+        this.chemicalFormula = withFormatting ? FormattingUtil.toSmallDownNumbers(formula) : formula;
+        return this;
+    }
+
+    public ImmutableList<MaterialStack> getMaterialComponents() {
+        return materialInfo.getComponentList();
+    }
+
+    public String getName() {
+        return materialInfo.resourceLocation.getPath();
+    }
+
+    public String getModid() {
+        return materialInfo.resourceLocation.getNamespace();
+    }
+
+    /**
+     * @param prefix the tagPrefix to check
+     * @return if the material should have recipes autogenerated
+     */
+    public boolean shouldGenerateRecipesFor(TagPrefix prefix) {
+        return !this.hasFlag(MaterialFlags.DISABLE_MATERIAL_RECIPES) && !ChemicalHelper.get(prefix, this).isEmpty();
+    }
+
+    public boolean shouldGenerateRecipesFor(Holder<TagPrefix> prefix) {
+        return !this.hasFlag(MaterialFlags.DISABLE_MATERIAL_RECIPES) && !ChemicalHelper.get(prefix, this).isEmpty();
+    }
+
+    public void addFlags(MaterialFlag... flags) {
+        if (GTRegistries.MATERIALS.isFrozen()) {
+            throw new IllegalStateException("Cannot add flag to material when registry is frozen!");
+        }
+        this.flags.addFlags(flags);
+    }
+
+    public boolean hasFlag(MaterialFlag flag) {
+        return flags.hasFlag(flag);
+    }
+
+    public boolean isElement() {
+        return materialInfo.element != null;
+    }
+
+    @Nullable
+    public Element getElement() {
+        return materialInfo.element == null ? null : materialInfo.element.value();
+    }
+
+    public boolean hasFlags(MaterialFlag... flags) {
+        return Arrays.stream(flags).allMatch(this::hasFlag);
+    }
+
+    public boolean hasAnyOfFlags(MaterialFlag... flags) {
+        return Arrays.stream(flags).anyMatch(this::hasFlag);
+    }
+
+    private void calculateDecompositionType() {
+        if (!materialInfo.getComponentList().isEmpty() &&
+                !hasFlag(MaterialFlags.DECOMPOSITION_BY_CENTRIFUGING) &&
+                !hasFlag(MaterialFlags.DECOMPOSITION_BY_ELECTROLYZING) &&
+                !hasFlag(MaterialFlags.DISABLE_DECOMPOSITION)) {
+            boolean onlyMetalMaterials = true;
+            for (MaterialStack materialStack : materialInfo.getComponentList()) {
+                Material material = materialStack.material();
+                onlyMetalMaterials &= material.hasProperty(PropertyKey.INGOT);
+            }
+            // allow centrifuging of alloy materials only
+            if (onlyMetalMaterials) {
+                flags.addFlags(MaterialFlags.DECOMPOSITION_BY_CENTRIFUGING);
+            } else {
+                flags.addFlags(MaterialFlags.DECOMPOSITION_BY_ELECTROLYZING);
+            }
+        }
+    }
+
+    /**
+     * Retrieves a fluid from the material.
+     * Attempts to retrieve with {@link FluidProperty#getPrimaryKey()}, {@link FluidStorageKeys#LIQUID} and
+     * {@link FluidStorageKeys#GAS}.
+     *
+     * @return the fluid
+     * @see #getFluid(FluidStorageKey)
+     */
+    public @Nullable Fluid getFluid() {
+        FluidProperty prop = getProperty(PropertyKey.FLUID);
+        if (prop == null) {
+            throw new IllegalArgumentException("Material " + getResourceLocation() + " does not have a Fluid!");
+        }
+
+        Fluid fluid = prop.get(prop.getPrimaryKey());
+        if (fluid != null) return fluid;
+
+        fluid = getFluid(FluidStorageKeys.LIQUID);
+        if (fluid != null) return fluid;
+
+        return getFluid(FluidStorageKeys.GAS);
+    }
+
+    /**
+     * @param key the key for the fluid
+     * @return the fluid corresponding with the key
+     */
+    public @Nullable Fluid getFluid(FluidStorageKey key) {
+        FluidProperty prop = getProperty(PropertyKey.FLUID);
+        if (prop == null) {
+            throw new IllegalArgumentException("Material " + getResourceLocation() + " does not have a Fluid!");
+        }
+
+        return prop.get(key);
+    }
+
+    /**
+     * @param amount the amount the FluidStack should have
+     * @return a FluidStack with the fluid and amount
+     * @see #getFluid(FluidStorageKey, int)
+     */
+    public FluidStack getFluid(int amount) {
+        Fluid fluid = getFluid();
+        if (fluid != null) return new FluidStack(fluid, amount);
+        else return FluidStack.EMPTY;
+    }
+
+    /**
+     * @param key    the key for the fluid
+     * @param amount the amount the FluidStack should have
+     * @return a FluidStack with the fluid and amount
+     */
+    public FluidStack getFluid(FluidStorageKey key, int amount) {
+        Fluid fluid = getFluid(key);
+        if (fluid != null) return new FluidStack(fluid, amount);
+        else return FluidStack.EMPTY;
+    }
+
+    /**
+     * @return a {@code TagKey<Fluid>} with the material's name as the tag key
+     * @see #getFluid(FluidStorageKey, int)
+     */
+    public TagKey<Fluid> getFluidTag() {
+        return TagUtil.createFluidTag(this.getName());
+    }
+
+    public SizedFluidIngredient asFluidIngredient(int amount) {
+        return SizedFluidIngredient.of(getFluidTag(), amount);
+    }
+
+    public SizedFluidIngredient asSingleFluidIngredient(int amount) {
+        return SizedFluidIngredient.of(
+                Objects.requireNonNull(getFluid(), "Cannot create fluid ingredient for material without a fluid"),
+                amount);
+    }
+
+    /**
+     * Retrieves a fluid builder from the material.
+     * <br>
+     * NOTE: only available before the fluids are registered.
+     * <br>
+     * Attempts to retrieve with {@link FluidProperty#getPrimaryKey()}, {@link FluidStorageKeys#LIQUID} and
+     * {@link FluidStorageKeys#GAS}.
+     *
+     * @return the fluid builder
+     */
+    public @Nullable FluidBuilder getFluidBuilder() {
+        FluidProperty prop = getProperty(PropertyKey.FLUID);
+        if (prop == null) {
+            throw new IllegalArgumentException("Material " + getResourceLocation() + " does not have a Fluid!");
+        }
+
+        FluidStorageKey key = prop.getPrimaryKey();
+        FluidBuilder fluid = null;
+
+        if (key != null) fluid = prop.getStorage().getQueuedBuilder(key);
+        if (fluid != null) return fluid;
+
+        fluid = getFluidBuilder(FluidStorageKeys.LIQUID);
+        if (fluid != null) return fluid;
+
+        return getFluidBuilder(FluidStorageKeys.GAS);
+    }
+
+    /**
+     * NOTE: only available before the fluids are registered.
+     *
+     * @param key the key for the fluid
+     * @return the fluid corresponding with the key
+     */
+    public @Nullable FluidBuilder getFluidBuilder(FluidStorageKey key) {
+        FluidProperty prop = getProperty(PropertyKey.FLUID);
+        if (prop == null) {
+            throw new IllegalArgumentException("Material " + getResourceLocation() + " does not have a Fluid!");
+        }
+
+        return prop.getStorage().getQueuedBuilder(key);
+    }
+
+    public MaterialToolTier getToolTier() {
+        ToolProperty prop = getProperty(PropertyKey.TOOL);
+        if (prop == null)
+            throw new IllegalArgumentException("Material " + materialInfo.resourceLocation + " does not have a tool!");
+        return prop.getTier(this);
+    }
+
+    /**
+     * Retains explicitly registered addon molten fluids, falling back to liquid when absent.
+     *
+     * @deprecated Use {@link #getFluid(FluidStorageKey)} with {@link FluidStorageKeys#LIQUID}.
+     */
+    @Deprecated(forRemoval = true)
+    public @Nullable Fluid getHotFluid() {
+        return hasProperty(PropertyKey.FLUID) ? getFluid(FluidStorageKeys.MOLTEN) : null;
+    }
+
+    /**
+     * @deprecated Use {@link #getFluid(FluidStorageKey, int)} with {@link FluidStorageKeys#LIQUID}.
+     */
+    @Deprecated(forRemoval = true)
+    public FluidStack getHotFluid(int amount) {
+        Fluid fluid = getHotFluid();
+        return fluid == null ? FluidStack.EMPTY : new FluidStack(fluid, amount);
+    }
+
+    public Item getBucket() {
+        Fluid fluid = getFluid();
+        return Objects.requireNonNull(fluid, "Cannot get bucket for material without a fluid.").getBucket();
+    }
+
+    public int getBlockHarvestLevel() {
+        DustProperty dustProperty = getProperty(PropertyKey.DUST);
+        if (dustProperty == null)
+            throw new IllegalArgumentException("Material " + materialInfo.resourceLocation +
+                    " does not have a harvest level! Is probably a Fluid");
+        int harvestLevel = dustProperty.getHarvestLevel();
+        return harvestLevel > 0 ? harvestLevel - 1 : harvestLevel;
+    }
+
+    public int getToolHarvestLevel() {
+        ToolProperty toolProperty = getProperty(PropertyKey.TOOL);
+        if (toolProperty == null)
+            throw new IllegalArgumentException("Material " + materialInfo.resourceLocation +
+                    " does not have a tool harvest level! Is probably not a Tool Material");
+        return toolProperty.getHarvestLevel();
+    }
+
+    public void setMaterialARGB(int materialRGB) {
+        materialInfo.colors.set(0, materialRGB);
+    }
+
+    public void setMaterialSecondaryARGB(int materialRGB) {
+        materialInfo.colors.set(1, materialRGB);
+    }
+
+    public int getLayerARGB(int layerIndex) {
+        // parse emissive layer value as -(layer + 101)
+        if (layerIndex < -100) {
+            layerIndex = -layerIndex - 101;
+        }
+        if (layerIndex > materialInfo.colors.size() - 1 || layerIndex < 0) return -1;
+        int layerColor = getMaterialARGB(layerIndex);
+        if (layerColor != -1 || layerIndex == 0) return layerColor;
+        else return getMaterialARGB(0);
+    }
+
+    public int getMaterialARGB() {
+        return materialInfo.colors.getInt(0) | 0xff000000;
+    }
+
+    public int getMaterialSecondaryARGB() {
+        return materialInfo.colors.getInt(1) | 0xff000000;
+    }
+
+    /**
+     * Gets a specific color layer in ARGB.
+     *
+     * @param index the index of the layer [0,10). will crash if you pass values > 10.
+     * @return Gets a specific color layer.
+     */
+    public int getMaterialARGB(int index) {
+        return materialInfo.colors.getInt(index) | 0xff000000;
+    }
+
+    public int getMaterialRGB() {
+        return materialInfo.colors.getInt(0);
+    }
+
+    /**
+     * Gets a specific color layer.
+     *
+     * @param index the index of the layer [0,10). will crash if you pass values > 10.
+     * @return Gets a specific color layer.
+     */
+    public int getMaterialRGB(int index) {
+        return materialInfo.colors.getInt(index);
+    }
+
+    public int getMaterialSecondaryRGB() {
+        return materialInfo.colors.getInt(1);
+    }
+
+    public boolean hasFluidColor() {
+        return materialInfo.hasFluidColor;
+    }
+
+    public MaterialIconSet getMaterialIconSet() {
+        return materialInfo.iconSet.value();
+    }
+
+    public boolean isRadioactive() {
+        if (getElement() != null)
+            return getElement().halfLifeSeconds() >= 0;
+        for (MaterialStack material : materialInfo.getComponentList())
+            if (material.material().isRadioactive()) return true;
+        return false;
+    }
+
+    public long getProtons() {
+        if (getElement() != null)
+            return getElement().protons();
+        if (materialInfo.getComponentList().isEmpty())
+            return Math.max(1, 43);
+        long totalProtons = 0, totalAmount = 0;
+        for (MaterialStack material : materialInfo.getComponentList()) {
+            if (material.isEmpty()) continue;
+            totalAmount += material.amount();
+            totalProtons += material.amount() * material.material().getProtons();
+        }
+        if (totalAmount == 0) return 0;
+        return totalProtons / totalAmount;
+    }
+
+    public long getNeutrons() {
+        if (getElement() != null)
+            return getElement().neutrons();
+        if (materialInfo.getComponentList().isEmpty())
+            return 55;
+        long totalNeutrons = 0, totalAmount = 0;
+        for (MaterialStack material : materialInfo.getComponentList()) {
+            if (material.isEmpty()) continue;
+            totalAmount += material.amount();
+            totalNeutrons += material.amount() * material.material().getNeutrons();
+        }
+        if (totalAmount == 0) return 0;
+        return totalNeutrons / totalAmount;
+    }
+
+    public long getMass() {
+        if (getElement() != null)
+            return getElement().mass();
+        if (materialInfo.getComponentList().isEmpty())
+            return 98;
+        long totalMass = 0, totalAmount = 0;
+        for (MaterialStack material : materialInfo.getComponentList()) {
+            if (material.isEmpty()) continue;
+            totalAmount += material.amount();
+            totalMass += material.amount() * material.material().getMass();
+        }
+        if (totalAmount == 0) return 0;
+        return totalMass / totalAmount;
+    }
+
+    public boolean requiresMetalFreezing() {
+        return hasProperty(PropertyKey.ALLOY_BLAST) && TagPrefix.ingotHot.doGenerateItem(this);
+    }
+
+    public int getBlastTemperature() {
+        BlastProperty prop = properties.getProperty(PropertyKey.BLAST);
+        return prop == null ? 0 : prop.getBlastTemperature();
+    }
+
+    public ResourceLocation getResourceLocation() {
+        return materialInfo.resourceLocation;
+    }
+
+    public String getUnlocalizedName() {
+        return materialInfo.resourceLocation.toLanguageKey("material");
+    }
+
+    public MutableComponent getLocalizedName() {
+        return Component.translatable(getUnlocalizedName());
+    }
+
+    @Override
+    public String toString() {
+        return materialInfo.resourceLocation.toString();
+    }
+
+    @Contract(pure = true)
+    public <T extends IMaterialProperty> boolean hasProperty(PropertyKey<T> key) {
+        return properties.hasProperty(key);
+    }
+
+    @Contract(pure = true)
+    public <T extends IMaterialProperty> @Nullable T getProperty(PropertyKey<T> key) {
+        return properties.getProperty(key);
+    }
+
+    @Contract(pure = true)
+    public <T extends IMaterialProperty> T getPropertyOrThrow(PropertyKey<T> key) {
+        return Objects.requireNonNull(getProperty(key), "Material missing %s property".formatted(key));
+    }
+
+    public <T extends IMaterialProperty> void removeProperty(PropertyKey<T> key) {
+        properties.removeProperty(key);
+    }
+
+    public <T extends IMaterialProperty> void setProperty(PropertyKey<T> key, T property) {
+        if (GTRegistries.MATERIALS.isFrozen()) {
+            throw new IllegalStateException("Cannot add properties to a Material when registry is frozen!");
+        }
+        properties.setProperty(key, property);
+    }
+
+    public boolean isSolid() {
+        return hasProperty(PropertyKey.INGOT) || hasProperty(PropertyKey.GEM);
+    }
+
+    public boolean hasFluid() {
+        return hasProperty(PropertyKey.FLUID);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (!(o instanceof Material material))
+            return false;
+
+        return Objects.equals(this.getResourceLocation(), material.getResourceLocation());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(this.getResourceLocation());
+    }
+
+    private boolean inheritedPropertiesResolved = false;
+
+    private void resolveInheritedProperties() {
+        if (inheritedPropertiesResolved) return;
+
+        if (!properties.hasProperty(PropertyKey.HAZARD)) {
+            for (MaterialStack materialStack : materialInfo.getComponentList()) {
+                Material material = materialStack.material();
+
+                material.resolveInheritedProperties();
+
+                HazardProperty property = material.getProperty(PropertyKey.HAZARD);
+                if (property != null && property.applyToDerivatives) {
+                    properties.setProperty(PropertyKey.HAZARD, property);
+                    break;
+                }
+            }
+        }
+
+        if (materialInfo.colors.getInt(0) == -1) {
+            if (!materialInfo.useAverageRGB || getMaterialComponents().isEmpty())
+                materialInfo.colors.set(0, 0xFFFFFF);
+            else {
+                long colorTemp = 0;
+                long divisor = 0;
+                for (MaterialStack stack : getMaterialComponents()) {
+
+                    stack.material().resolveInheritedProperties();
+
+                    colorTemp += stack.material().getMaterialARGB() * stack.amount();
+                    divisor += stack.amount();
+                }
+                materialInfo.colors.set(0, GTMath.saturatedCast(colorTemp / divisor));
+            }
+        }
+
+        inheritedPropertiesResolved = true;
+    }
+
+    /**
+     * Initial verification occurs before material modification and
+     * makes sure that the properties and flags added during a material's initial builder are properly verified.
+     */
+    @ApiStatus.Internal
+    public void verifyMaterialInitial() {
+        properties.verify();
+        flags.verify(this);
+
+        calculateDecompositionType();
+    }
+
+    /**
+     * Final verification is performed after material modification and
+     * makes sure that properties and flags are verified,
+     * and verifies material properties which are dependent on component materials.
+     */
+    @ApiStatus.Internal
+    public void verifyMaterialFinal() {
+        properties.verify();
+        flags.verify(this);
+
+        resolveInheritedProperties();
+
+        HazardProperty hazardProperty = properties.getProperty(PropertyKey.HAZARD);
+        if (hazardProperty != null && hazardProperty.hazardTrigger == HazardProperty.HazardTrigger.NONE) {
+            properties.removeProperty(PropertyKey.HAZARD);
+        }
+    }
+
+    /**
+     * Holds the basic info for a Material, like the name, color, id, etc.
+     */
+    @SuppressWarnings("UnusedReturnValue")
+    @Accessors(chain = true)
+    public static class MaterialInfo {
+
+        /**
+         * The modid and unlocalized name of this Material.
+         * <p>
+         * Required.
+         */
+        private final ResourceLocation resourceLocation;
+
+        /**
+         * The colors of this Material.
+         * if any past index 0 are -1, they aren't used.
+         * <p>
+         * Default: 0xFFFFFF if no Components, otherwise it will be the average of Components.
+         */
+        @Getter
+        @Setter
+        private IntList colors = IntArrayList.of(-1, -1);
+
+        /**
+         * The color of this Material.
+         * <p>
+         * Default: 0xFFFFFF if no Components, otherwise it will be the average of Components.
+         */
+        @Getter
+        @Setter
+        private boolean hasFluidColor = true;
+
+        /**
+         * The IconSet of this Material.
+         * <p>
+         * Default: - GEM_VERTICAL if it has GemProperty.
+         * - DULL if has DustProperty or IngotProperty.
+         */
+        @Getter
+        @Setter
+        private Holder<MaterialIconSet> iconSet = MaterialIconSet.DULL;
+
+        /**
+         * The components of this Material.
+         * <p>
+         * Default: empty.
+         */
+        private @Nullable ImmutableList<MaterialStack> resolvedComponentList;
+        private ImmutableList<DeferredMaterialStack> unresolvedComponentList = ImmutableList.of();
+
+        /**
+         * The Element of this Material, if it is a direct Element.
+         * <p>
+         * Default: none.
+         */
+        @Getter
+        @Setter
+        private @Nullable Holder<Element> element;
+
+        /*
+         * Temporary value to use to determine how to calculate default RGB.
+         */
+        @Getter
+        @Setter
+        private boolean useAverageRGB = false;
+
+        public MaterialInfo(ResourceLocation resourceLocation) {
+            this.resourceLocation = resourceLocation;
+        }
+
+        public void verifyInfo(MaterialProperties p) {
+            // Verify IconSet
+            if (iconSet == MaterialIconSet.DULL) {
+                if (p.hasProperty(PropertyKey.GEM)) {
+                    iconSet = MaterialIconSet.GEM_VERTICAL;
+                } else if (p.hasProperty(PropertyKey.DUST) || p.hasProperty(PropertyKey.INGOT) ||
+                        p.hasProperty(PropertyKey.POLYMER)) {
+                            iconSet = MaterialIconSet.DULL;
+                        } else
+                    if (p.hasProperty(PropertyKey.FLUID)) {
+                        iconSet = MaterialIconSet.FLUID;
+                    } else iconSet = MaterialIconSet.DULL;
+            }
+        }
+
+        public ImmutableList<MaterialStack> getComponentList() {
+            if (resolvedComponentList == null) resolvedComponentList = ImmutableList
+                    .copyOf(unresolvedComponentList.stream().map(DeferredMaterialStack::toMatStack).toList());
+            return resolvedComponentList;
+        }
+
+        public MaterialInfo setComponents(List<DeferredMaterialStack> components) {
+            this.unresolvedComponentList = ImmutableList.copyOf(components);
+            this.resolvedComponentList = null;
+            return this;
+        }
+    }
+}

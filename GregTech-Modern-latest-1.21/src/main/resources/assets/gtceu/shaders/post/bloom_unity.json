@@ -1,0 +1,77 @@
+{
+    "targets": [
+        "final",
+        "swap_a2",
+        "swap_a4",
+        "swap_1",
+        "swap_2"
+    ],
+    "passes": [
+        {
+            "name": "blit",
+            "intarget": "final",
+            "outtarget": "swap_a2"
+        },
+        {
+            "name": "gtceu:down_sampling",
+            "intarget": "swap_a2",
+            "outtarget": "swap_a4",
+            "use_linear_filter": true
+        },
+        {
+            "name": "gtceu:down_sampling",
+            "intarget": "swap_a4",
+            "outtarget": "swap_1",
+            "use_linear_filter": true
+        },
+        {
+            "name": "gtceu:down_sampling",
+            "intarget": "swap_1",
+            "outtarget": "swap_2",
+            "use_linear_filter": true
+        },
+        {
+            "name": "gtceu:up_sampling",
+            "intarget": "swap_2",
+            "outtarget": "swap_1",
+            "use_linear_filter": true,
+            "auxtargets": [
+                { "id": "swap_a4", "name": "DownTexture" }
+            ]
+        },
+        {
+            "name": "gtceu:up_sampling",
+            "intarget": "swap_1",
+            "outtarget": "swap_2",
+            "use_linear_filter": true,
+            "auxtargets": [
+                { "id": "swap_a2", "name": "DownTexture" }
+            ]
+        },
+        {
+            "name": "gtceu:up_sampling",
+            "intarget": "swap_2",
+            "outtarget": "swap_1",
+            "use_linear_filter": true,
+            "auxtargets": [
+                { "id": "final", "name": "DownTexture" }
+            ]
+        },
+        {
+            "__comment": "Copy the original buffer to a temporary one so we can output to the actual one in composite",
+            "name": "blit",
+            "intarget": "final",
+            "outtarget": "swap_2"
+        },
+        {
+            "name": "gtceu:unity_composite",
+            "intarget": "swap_1",
+            "outtarget": "final",
+            "use_linear_filter": true,
+            "auxtargets": [
+                { "id": "swap_2",         "name": "HighlightSampler" },
+                { "id": "minecraft:main", "name": "MainSampler" }
+            ]
+        }
+    ]
+}

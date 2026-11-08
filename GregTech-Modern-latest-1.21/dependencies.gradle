@@ -1,0 +1,150 @@
+dependencies {
+    compileOnly(libs.jetbrains.annotations)
+
+    testJarJar(testApi(libs.testframework.get()))
+
+    // Registrate
+    jarJar(api(forge.registrate.get()))
+
+    // Configuration
+    jarJar(api(forge.configuration.get()))
+
+    // Math Parser
+    compileOnly(libs.evalEx.get())
+
+    // MUI
+    jarJar(implementation(forge.mui.get()))
+
+    // Recipe Viewers
+    compileOnly(forge.bundles.jei)
+    compileOnly(forge.emi)
+
+    // WAILA-likes
+    compileOnly(forge.jade)
+
+    // Curios
+    compileOnly(variantOf(forge.curios) { classifier("api") })
+
+    // AE2
+    compileOnly(forge.ae2)
+
+    // Create
+    compileOnly(forge.ponder)
+    compileOnly(variantOf(forge.create) { classifier("slim") })
+    compileOnly(forge.flywheel.api)
+
+    // Sable (Create Aeronautics physics sub-levels)
+    compileOnly(forge.sable)
+
+    // KJS
+    compileOnly(forge.bundles.kjs)
+
+    // Performance
+    compileOnly(forge.sodium.impl) // we have to depend on the entirety of sodium to mixin into it.
+    compileOnly(forge.sodium.api) // also add api so we get sources :)
+    compileOnly(forge.fabricApi.rendering) // IDK why the version sodium JiJ's doesn't work.
+    compileOnly(forge.iris)
+    compileOnly(forge.embeddium)
+    compileOnly(forge.modernfix)
+
+    // Teams
+    compileOnly(forge.ftblibrary)
+    compileOnly(forge.ftbteams)
+    compileOnly(forge.ftbquests)
+    compileOnly(forge.resourcefullib)
+    compileOnly(forge.argonauts)
+    compileOnly(forge.heracles)
+
+    // Maps
+    compileOnly(forge.ftbchunks)
+    compileOnly(forge.xaeroslib)
+    compileOnly(forge.xaerosminimap)
+    compileOnly(forge.xaerosworldmap)
+    compileOnly(forge.journeymap.api)
+    compileOnly(forge.journeymap.forge)
+
+    compileOnly(forge.curios)
+    localRuntime(forge.curios)
+
+    // GameStages
+    // compileOnly(forge.gamestages)
+
+    // CC: Tweaked
+    compileOnly(forge.cc.tweaked.core.api)
+    compileOnly(forge.cc.tweaked.forge.api)
+
+    // Standard runtime mods //
+    localRuntime(libs.testframework)
+
+    localRuntime(forge.jade)
+    localRuntime(forge.ae2)
+    localRuntime(forge.spark)
+    localRuntime(forge.modernfix)
+
+    // Runtime Recipe Viewers - uncomment whichever one you want to use //
+    localRuntime(forge.emi)
+//    localRuntime(forge.jei.neoforge.impl)
+
+    // Client-only runtime mods //
+    clientLocalRuntime(forge.sodium.impl)
+    sodiumShellSource(forge.sodium.full)
+    clientLocalRuntime(files(tasks.named('stripSodiumShellLib')))
+
+    clientLocalRuntime(forge.fabricApi.base)
+    clientLocalRuntime(forge.fabricApi.rendering)
+    clientLocalRuntime(forge.fabricApi.renderingData)
+    clientLocalRuntime(forge.fabricApi.blockView)
+    clientLocalRuntime(forge.iris)
+    renderNurseCfg(libs.renderNurse)
+
+    //////////////////////////////////////////////////////
+    // Runtime mods for dev testing with unclean client //
+    //////////////////////////////////////////////////////
+    extraLocalRuntime(forge.javd)
+    extraLocalRuntime(forge.trenzalore)
+    extraLocalRuntime(forge.curios)
+//    extraLocalRuntime(forge.worldstripper)
+    localRuntime(forge.cc.tweaked.forge.impl)
+
+    extraLocalRuntime(forge.create) {
+        // Needed to prevent game-test crashes
+        exclude group: "maven.modrinth", module: "journeymap"
+        exclude group: "info.journeymap", module: "journeymap-api-neoforge"
+    }
+
+    // Create Aeronautics suite (Sable physics sub-levels) for dev-testing the compat, enabled if needed
+
+//    extraLocalRuntime(forge.sable)
+//    extraLocalRuntime(forge.sableRapier)
+//    extraLocalRuntime(forge.sableCompanion)
+//    extraLocalRuntime(forge.veil)
+//    extraLocalRuntime(forge.aeronautics) { transitive = false }
+//    extraLocalRuntime(forge.simulated) { transitive = false }
+//    extraLocalRuntime(forge.offroad) { transitive = false }
+
+    extraLocalRuntime(forge.bundles.kjs)
+
+    extraLocalRuntime(forge.ftblibrary)
+    extraLocalRuntime(forge.ftbteams)
+    extraLocalRuntime(forge.ftbquests)
+
+//    extraLocalRuntime(forge.heracles)
+    extraLocalRuntime(forge.resourcefullib)
+
+//    extraLocalRuntime(forge.xaerosminimap)
+//    extraLocalRuntime(forge.xaerosworldmap)
+//    extraLocalRuntime(forge.journeymap.forge)
+//    extraLocalRuntime(forge.ftbchunks)
+
+//    extraLocalRuntime(forge.gamestages)
+    extraLocalRuntime(forge.bookshelf) {
+        transitive = false
+    }
+
+    extraLocalRuntime(forge.kotlinforforge) {
+        transitive = false
+    }
+    extraLocalRuntime(forge.observable)
+    //////////////////////////
+
+}

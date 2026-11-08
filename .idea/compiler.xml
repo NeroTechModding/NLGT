@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Gradle Imported" enabled="true">
+        <outputRelativeToContentRoot value="true" />
+        <option name="quiet" value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.projectlombok/lombok/1.18.38/57f8f5e02e92a30fd21b80cbd426a4172b5f8e29/lombok-1.18.38.jar" />
+        </processorPath>
+        <module name="gtceu.extra" />
+        <module name="gtceu.main" />
+        <module name="gtceu.test" />
+        <module name="gtceu.client" />
+        <module name="gtceu.clientExtra" />
+      </profile>
+    </annotationProcessing>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="gtceu" options="-Xlint:-processing -Xlint:-removal -Aquiet=true" />
+      <module name="gtceu.client" options="-Xlint:-processing -Xlint:-removal -Aquiet=true" />
+      <module name="gtceu.clientExtra" options="-Xlint:-processing -Xlint:-removal -Aquiet=true" />
+      <module name="gtceu.extra" options="-Xlint:-processing -Xlint:-removal -Aquiet=true" />
+      <module name="gtceu.main" options="-Xlint:-processing -Xlint:-removal -Aquiet=true" />
+      <module name="gtceu.test" options="-Xlint:-processing -Xlint:-removal -Aquiet=true" />
+    </option>
+  </component>
+</project>
