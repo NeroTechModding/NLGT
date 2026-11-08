@@ -2,12 +2,12 @@ package com.gregtechceu.gtceu.api.recipe;
 
 import com.gregtechceu.gtceu.api.GTValues;
 import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
-import com.gregtechceu.gtceu.api.recipe.ingredient.EnergyStack;
-import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.recipe.content.ContentModifier;
+import com.gregtechceu.gtceu.api.recipe.ingredient.EnergyStack;
 import com.gregtechceu.gtceu.api.recipe.modifier.ModifierFunction;
 import com.gregtechceu.gtceu.api.recipe.modifier.ParallelLogic;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.utils.GTMath;
 import com.gregtechceu.gtceu.utils.GTUtil;
 
@@ -87,7 +87,8 @@ public interface OverclockingLogic {
      * exceeds the full amp and never changes the recipe's tier.
      */
     static @NotNull ModifierFunction fullAmpModifier(GTRecipe recipe) {
-        if (ConfigHolder.INSTANCE == null || !ConfigHolder.INSTANCE.machines.fullAmpRecipes) return ModifierFunction.IDENTITY;
+        if (ConfigHolder.INSTANCE == null || !ConfigHolder.INSTANCE.machines.fullAmpRecipes)
+            return ModifierFunction.IDENTITY;
         if (recipe.data.getBoolean("duration_is_total_cwu")) return ModifierFunction.IDENTITY;
 
         EnergyStack input = recipe.getInputEUt();
