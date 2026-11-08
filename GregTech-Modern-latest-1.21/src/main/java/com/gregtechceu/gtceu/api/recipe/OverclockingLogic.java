@@ -1,6 +1,9 @@
 package com.gregtechceu.gtceu.api.recipe;
 
 import com.gregtechceu.gtceu.api.GTValues;
+import com.gregtechceu.gtceu.api.capability.recipe.EURecipeCapability;
+import com.gregtechceu.gtceu.api.recipe.ingredient.EnergyStack;
+import com.gregtechceu.gtceu.config.ConfigHolder;
 import com.gregtechceu.gtceu.api.machine.MetaMachine;
 import com.gregtechceu.gtceu.api.recipe.content.ContentModifier;
 import com.gregtechceu.gtceu.api.recipe.modifier.ModifierFunction;
@@ -66,6 +69,51 @@ public interface OverclockingLogic {
      */
     default @NotNull ModifierFunction getModifier(MetaMachine machine, GTRecipe recipe, long maxVoltage,
                                                   boolean shouldParallel) {
+        ModifierFunction fullAmp = fullAmpModifier(recipe);
+        if (fullAmp == ModifierFunction.IDENTITY) {
+            return getOverclockModifier(machine, recipe, maxVoltage, shouldParallel);
+        }
+        GTRecipe amped = fullAmp.apply(recipe);
+        if (amped == null) return ModifierFunction.NULL;
+        return fullAmp.andThen(getOverclockModifier(machine, amped, maxVoltage, shouldParallel));
+    }
+
+    /**
+     * Full-amp scaling: raises an EU-consuming recipe's voltage up to one full amp of its tier
+     * ({@code V[tier]}, e.g. 32 EU/t for LV) and shortens the duration so the total EU stays the same.
+     * A 7 EU/t recipe therefore runs at 32 EU/t and {@code 32/7 ≈ 4.57×} faster.
+     * <p>
+     * Duration is rounded up (min 1 tick) and voltage is recomputed from the total EU, so the result never
+     * exceeds the full amp and never changes the recipe's tier.
+     */
+    static @NotNull ModifierFunction fullAmpModifier(GTRecipe recipe) {
+        if (ConfigHolder.INSTANCE == null || !ConfigHolder.INSTANCE.machines.fullAmpRecipes) return ModifierFunction.IDENTITY;
+        if (recipe.data.getBoolean("duration_is_total_cwu")) return ModifierFunction.IDENTITY;
+
+        EnergyStack input = recipe.getInputEUt();
+        if (input.isEmpty() || recipe.duration <= 1) return ModifierFunction.IDENTITY; // generators / instant
+
+        long voltage = input.voltage();
+        int tier = GTUtil.getTierByVoltage(voltage);
+        if (tier >= GTValues.V.length) return ModifierFunction.IDENTITY;
+        long fullAmp = GTValues.V[tier];
+        if (voltage >= fullAmp) return ModifierFunction.IDENTITY;
+
+        long totalEU = voltage * recipe.duration; // per amp
+        int newDuration = (int) Math.max(1, (totalEU + fullAmp - 1) / fullAmp);
+        long newVoltage = Math.min(fullAmp, (totalEU + newDuration - 1) / newDuration);
+        if (newDuration == recipe.duration) return ModifierFunction.IDENTITY;
+
+        return r -> {
+            var copy = r.copy();
+            EURecipeCapability.putEUContent(copy.tickInputs, input.withVoltage(newVoltage));
+            copy.duration = newDuration;
+            return copy;
+        };
+    }
+
+    private @NotNull ModifierFunction getOverclockModifier(MetaMachine machine, GTRecipe recipe, long maxVoltage,
+                                                           boolean shouldParallel) {
         long EUt = RecipeHelper.getRealEUt(recipe).getTotalEU();
         if (EUt == 0) return ModifierFunction.IDENTITY;
 

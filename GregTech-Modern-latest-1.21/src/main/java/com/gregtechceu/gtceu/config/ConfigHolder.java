@@ -507,6 +507,13 @@ public class ConfigHolder {
         @Configurable.Comment({ "Duration in ticks that batching will try to reach.", "Default: 100" })
         public int batchDuration = 100;
         @Configurable
+        @Configurable.Comment({
+                "Whether electric recipes always draw a full amp of their voltage tier (e.g. 32 EU/t at LV),",
+                "running proportionally faster while using the same total EU. Applied before overclocking.",
+                "Example: a 7 EU/t recipe runs at 32 EU/t and ~4.57x faster.", "Default: true" })
+        @Configurable.Synchronized
+        public boolean fullAmpRecipes = true;
+        @Configurable
         @Configurable.Comment({ "Whether Steam Multiblocks should use Steel instead of Bronze.", "Default: false" })
         @Configurable.UpdateRestriction(UpdateRestrictions.GAME_RESTART)
         public boolean steelSteamMultiblocks = false;
